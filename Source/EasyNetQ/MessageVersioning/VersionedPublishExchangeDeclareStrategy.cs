@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using EasyNetQ.Internals;
 using EasyNetQ.Producer;
 using EasyNetQ.Topology;
 
@@ -8,48 +9,85 @@ namespace EasyNetQ.MessageVersioning
 {
     public class VersionedPublishExchangeDeclareStrategy : IPublishExchangeDeclareStrategy
     {
-        private readonly ConcurrentDictionary<string, Task<IExchange>> exchangeNames = new ConcurrentDictionary<string, Task<IExchange>>();
+        private readonly IAdvancedBus advancedBus;
+        private readonly AsyncLock asyncLock = new AsyncLock();
+        private readonly IConventions conventions;
+        private readonly ConcurrentDictionary<string, IExchange> exchanges = new ConcurrentDictionary<string, IExchange>();
 
-        public IExchange DeclareExchange(IAdvancedBus advancedBus, string exchangeName, string exchangeType)
+        public VersionedPublishExchangeDeclareStrategy(IConventions conventions, IAdvancedBus advancedBus)
         {
-            return DeclareExchangeAsync(advancedBus, exchangeName, exchangeType).Result;
+            Preconditions.CheckNotNull(conventions, "conventions");
+            Preconditions.CheckNotNull(advancedBus, "advancedBus");
+
+            this.conventions = conventions;
+            this.advancedBus = advancedBus;
         }
 
-        public IExchange DeclareExchange(IAdvancedBus advancedBus, Type messageType, string exchangeType)
+        public IExchange DeclareExchange(string exchangeName, string exchangeType)
         {
-            return DeclareExchangeAsync(advancedBus, messageType, exchangeType).Result;
+            if (exchanges.TryGetValue(exchangeName, out var exchange)) return exchange;
+            using (asyncLock.Acquire())
+            {
+                if (exchanges.TryGetValue(exchangeName, out exchange)) return exchange;
+                exchange = advancedBus.ExchangeDeclare(exchangeName, exchangeType);
+                exchanges[exchangeName] = exchange;
+                return exchange;
+            }
         }
 
-        public Task<IExchange> DeclareExchangeAsync(IAdvancedBus advancedBus, string exchangeName, string exchangeType)
+        public IExchange DeclareExchange(Type messageType, string exchangeType)
         {
-            return exchangeNames.AddOrUpdate(
-                exchangeName,
-                name => advancedBus.ExchangeDeclareAsync(name, exchangeType),
-                (name, exchangeTask) => exchangeTask.IsFaulted ? advancedBus.ExchangeDeclareAsync(name, exchangeType) : exchangeTask);
-        }
-
-        public Task<IExchange> DeclareExchangeAsync(IAdvancedBus advancedBus, Type messageType, string exchangeType)
-        {
-            var conventions = advancedBus.Container.Resolve<IConventions>();
             var messageVersions = new MessageVersionStack(messageType);
-            return DeclareVersionedExchanges(advancedBus, conventions, messageVersions, exchangeType);
+            return DeclareVersionedExchanges(messageVersions, exchangeType);
         }
 
-        private Task<IExchange> DeclareVersionedExchanges(IAdvancedBus advancedBus, IConventions conventions, MessageVersionStack messageVersions, string exchangeType)
+        public async Task<IExchange> DeclareExchangeAsync(string exchangeName, string exchangeType)
         {
-            var destinationExchangeTask = TaskHelpers.FromResult<IExchange>(null);
-            while (! messageVersions.IsEmpty())
+            if (exchanges.TryGetValue(exchangeName, out var exchange)) return exchange;
+            using (await asyncLock.AcquireAsync().ConfigureAwait(false))
+            {
+                if (exchanges.TryGetValue(exchangeName, out exchange)) return exchange;
+                exchange = await advancedBus.ExchangeDeclareAsync(exchangeName, exchangeType).ConfigureAwait(false);
+                exchanges[exchangeName] = exchange;
+                return exchange;
+            }
+        }
+
+        public Task<IExchange> DeclareExchangeAsync(Type messageType, string exchangeType)
+        {
+            var messageVersions = new MessageVersionStack(messageType);
+            return DeclareVersionedExchangesAsync(messageVersions, exchangeType);
+        }
+
+        private async Task<IExchange> DeclareVersionedExchangesAsync(MessageVersionStack messageVersions, string exchangeType)
+        {
+            IExchange destinationExchange = null;
+            while (!messageVersions.IsEmpty())
             {
                 var messageType = messageVersions.Pop();
                 var exchangeName = conventions.ExchangeNamingConvention(messageType);
-                destinationExchangeTask = destinationExchangeTask.Then(destinationExchange => DeclareExchangeAsync(advancedBus, exchangeName, exchangeType).Then(sourceExchange =>
-                    {
-                        if (destinationExchange != null)
-                            return advancedBus.BindAsync(sourceExchange, destinationExchange, "#").Then(() => sourceExchange);
-                        return TaskHelpers.FromResult(sourceExchange);
-                    }));
+                var sourceExchange = await DeclareExchangeAsync(exchangeName, exchangeType).ConfigureAwait(false);
+                if (destinationExchange != null)
+                    await advancedBus.BindAsync(sourceExchange, destinationExchange, "#").ConfigureAwait(false);
+                destinationExchange = sourceExchange;
             }
-            return destinationExchangeTask;
+
+            return destinationExchange;
+        }
+
+        private IExchange DeclareVersionedExchanges(MessageVersionStack messageVersions, string exchangeType)
+        {
+            IExchange destinationExchange = null;
+            while (!messageVersions.IsEmpty())
+            {
+                var messageType = messageVersions.Pop();
+                var exchangeName = conventions.ExchangeNamingConvention(messageType);
+                var sourceExchange = DeclareExchange(exchangeName, exchangeType);
+                if (destinationExchange != null) advancedBus.Bind(sourceExchange, destinationExchange, "#");
+                destinationExchange = sourceExchange;
+            }
+
+            return destinationExchange;
         }
     }
 }

@@ -1,21 +1,17 @@
 ﻿// ReSharper disable InconsistentNaming
 
-using System;
 using System.Collections.Generic;
-using System.IO;
-using NUnit.Framework;
-using System.Linq;
+using FluentAssertions;
+using Xunit;
 
 namespace EasyNetQ.Tests
 {
-    [TestFixture]
     public class RandomClusterHostSelectionStrategyTests
     {
         private IClusterHostSelectionStrategy<string> clusterHostSelectionStrategy;
         private HashSet<string> hosts;
 
-        [SetUp]
-        public void SetUp()
+        public RandomClusterHostSelectionStrategyTests()
         {
             clusterHostSelectionStrategy = new RandomClusterHostSelectionStrategy<string>
             {
@@ -27,7 +23,7 @@ namespace EasyNetQ.Tests
             hosts = new HashSet<string>();
         }
 
-        [Test]
+        [Fact]
         public void Should_end_after_every_item_has_been_returned()
         {
             do
@@ -36,14 +32,14 @@ namespace EasyNetQ.Tests
                 hosts.Add(item);
             } while (clusterHostSelectionStrategy.Next());
 
-            Assert.IsTrue(hosts.Contains("0"));
-            Assert.IsTrue(hosts.Contains("1"));
-            Assert.IsTrue(hosts.Contains("2"));
-            Assert.IsTrue(hosts.Contains("3"));
-            clusterHostSelectionStrategy.Succeeded.ShouldBeFalse();
+            Assert.True(hosts.Contains("0"));
+            Assert.True(hosts.Contains("1"));
+            Assert.True(hosts.Contains("2"));
+            Assert.True(hosts.Contains("3"));
+            clusterHostSelectionStrategy.Succeeded.Should().BeFalse();
         }
 
-        [Test]
+        [Fact]
         public void Should_forget_success_after_reset()
         {
             do
@@ -51,12 +47,13 @@ namespace EasyNetQ.Tests
                 clusterHostSelectionStrategy.Current();
                 clusterHostSelectionStrategy.Success();
             } while (clusterHostSelectionStrategy.Next());
-            clusterHostSelectionStrategy.Succeeded.ShouldBeTrue();
+
+            clusterHostSelectionStrategy.Succeeded.Should().BeTrue();
             clusterHostSelectionStrategy.Reset();
-            clusterHostSelectionStrategy.Succeeded.ShouldBeFalse();
+            clusterHostSelectionStrategy.Succeeded.Should().BeFalse();
         }
 
-        [Test]
+        [Fact]
         public void Should_end_once_success_is_called()
         {
             var count = 0;
@@ -70,7 +67,7 @@ namespace EasyNetQ.Tests
 
             } while (clusterHostSelectionStrategy.Next());
 
-            clusterHostSelectionStrategy.Succeeded.ShouldBeTrue();
+            clusterHostSelectionStrategy.Succeeded.Should().BeTrue();
         }
 
     }

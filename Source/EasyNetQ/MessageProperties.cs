@@ -1,11 +1,16 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using RabbitMQ.Client;
+using System.Reflection;
 
 namespace EasyNetQ
 {
     public class MessageProperties
+#if NETFX
+        : ICloneable
+#endif
     {
         public MessageProperties()
         {
@@ -67,6 +72,31 @@ namespace EasyNetQ
             {
                 basicProperties.Headers = new Dictionary<string, object>(Headers);
             }
+        }
+        public object Clone()
+        {
+            var copy = new MessageProperties();
+
+            if (contentTypePresent) copy.ContentType = ContentType;
+            if (contentEncodingPresent) copy.ContentEncoding = ContentEncoding;
+            if (deliveryModePresent) copy.DeliveryMode = DeliveryMode;
+            if (priorityPresent) copy.Priority = Priority;
+            if (correlationIdPresent) copy.CorrelationId = CorrelationId;
+            if (replyToPresent) copy.ReplyTo = ReplyTo;
+            if (expirationPresent) copy.Expiration = Expiration;
+            if (messageIdPresent) copy.MessageId = MessageId;
+            if (timestampPresent) copy.Timestamp = Timestamp;
+            if (typePresent) copy.Type = Type;
+            if (userIdPresent) copy.UserId = UserId;
+            if (appIdPresent) copy.AppId = AppId;
+            if (clusterIdPresent) copy.ClusterId = ClusterId;
+
+            if (headersPresent)
+            {
+                copy.Headers = new Dictionary<string, object>(Headers);
+            }
+
+            return copy;
         }
 
         private bool contentTypePresent = false;
@@ -322,51 +352,39 @@ namespace EasyNetQ
             set { clusterIdPresent = value; }
         }
 
-        public void AppendPropertyDebugStringTo(StringBuilder stringBuilder)
+        public override string ToString()
         {
-            GetType()
+            return GetType()
                 .GetProperties()
                 .Where(x => !x.Name.EndsWith("Present"))
                 .Select(x => string.Format("{0}={1}", x.Name, GetValueString(x.GetValue(this, null))))
                 .Intersperse(", ")
-                .Aggregate(stringBuilder, (sb, x) =>
-                {
-                    sb.Append(x);
-                    return sb;
-                });
+                .Aggregate(new StringBuilder(), (sb, x) => sb.Append(x))
+                .ToString();
         }
 
-        private string GetValueString(object value)
+        private static string GetValueString(object value)
         {
             if (value == null) return "NULL";
 
             var dictionary = value as IDictionary<string, object>;
             if (dictionary == null) return value.ToString();
 
-            var stringBuilder = new StringBuilder();
-
-            dictionary
-                .EnumerateDictionary()
+            return dictionary
                 .Select(x => string.Format("{0}={1}", x.Key, x.Value))
                 .Intersperse(", ")
                 .SurroundWith("[", "]")
-                .Aggregate(stringBuilder, (sb, x) =>
-                    {
-                        sb.Append(x);
-                        return sb;
-                    });
-
-            return stringBuilder.ToString();
+                .Aggregate(new StringBuilder(), (builder, element) => builder.Append(element))
+                .ToString();
         }
 
-        private string CheckShortString(string input, string name)
+        private static string CheckShortString(string input, string name)
         {
             if (input == null) return null;
 
             if (input.Length > 255)
             {
-                throw new EasyNetQException("Exceeded maximum length of basic properties field '{0}'. Value: '{1}'",
-                    name, input);
+                throw new EasyNetQException("Exceeded maximum length of basic properties field '{0}'. Value: '{1}'", name, input);
             }
 
             return input;

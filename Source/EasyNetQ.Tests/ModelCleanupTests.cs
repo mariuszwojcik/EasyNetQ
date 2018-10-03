@@ -1,37 +1,35 @@
-﻿// ReSharper disable InconsistentNaming
-
-using System;
+﻿using System;
 using System.Threading;
 using EasyNetQ.Events;
 using EasyNetQ.Tests.Mocking;
-using NUnit.Framework;
-using Rhino.Mocks;
+using NSubstitute;
+using Xunit;
 
 namespace EasyNetQ.Tests
 {
-    [TestFixture]
     public class ModelCleanupTests
     {
-        private IBus bus;
-        private MockBuilder mockBuilder;
+        private readonly IBus bus;
+        private readonly MockBuilder mockBuilder;
+        private readonly TimeSpan waitTime;
 
-        [SetUp]
-        public void SetUp()
+        public ModelCleanupTests()
         {
             mockBuilder = new MockBuilder();
             bus = mockBuilder.Bus;
+            waitTime = TimeSpan.FromMinutes(2);
         }
 
-        [Test]
-        public void Should_cleanup_publish_model()
+        [Fact]
+        public void Should_not_cleanup_publish_model()
         {
             bus.Publish(new TestMessage());
             bus.Dispose();
 
-            mockBuilder.Channels[0].AssertWasCalled(x => x.Dispose());
+            mockBuilder.Channels[0].DidNotReceive().Dispose();
         }
 
-        [Test]
+        [Fact]
         public void Should_cleanup_subscribe_model()
         {
             bus.Subscribe<TestMessage>("abc", mgs => {});
@@ -39,12 +37,13 @@ namespace EasyNetQ.Tests
 
             bus.Dispose();
 
-            are.WaitOne();
+            bool signalReceived = are.WaitOne(waitTime);
+            Assert.True(signalReceived, $"Set event was not received within {waitTime.TotalSeconds} seconds");
 
-            mockBuilder.Channels[1].AssertWasCalled(x => x.Dispose());
+            mockBuilder.Channels[1].Received().Dispose();
         }
 
-        [Test]
+        [Fact]
         public void Should_cleanup_subscribe_async_model()
         {
             bus.SubscribeAsync<TestMessage>("abc", msg => null);
@@ -52,12 +51,13 @@ namespace EasyNetQ.Tests
 
             bus.Dispose();
 
-            are.WaitOne();
+            bool signalReceived = are.WaitOne(waitTime);
+            Assert.True(signalReceived, $"Set event was not received within {waitTime.TotalSeconds} seconds");
 
-            mockBuilder.Channels[1].AssertWasCalled(x => x.Dispose());
+            mockBuilder.Channels[1].Received().Dispose();
         }
 
-        [Test]
+        [Fact]
         public void Should_cleanup_request_response_model()
         {
             bus.RequestAsync<TestRequestMessage, TestResponseMessage>(new TestRequestMessage());
@@ -65,12 +65,13 @@ namespace EasyNetQ.Tests
 
             bus.Dispose();
 
-            are.WaitOne();
+            bool signalReceived = are.WaitOne(waitTime);
+            Assert.True(signalReceived, $"Set event was not received within {waitTime.TotalSeconds} seconds");
 
-            mockBuilder.Channels[1].AssertWasCalled(x => x.Dispose());
+            mockBuilder.Channels[1].Received().Dispose();
         }
 
-        [Test]
+        [Fact]
         public void Should_cleanup_respond_model()
         {
             bus.Respond<TestRequestMessage, TestResponseMessage>(x => null);
@@ -78,9 +79,10 @@ namespace EasyNetQ.Tests
 
             bus.Dispose();
 
-            are.WaitOne();
+            bool signalReceived = are.WaitOne(waitTime);
+            Assert.True(signalReceived, $"Set event was not received within {waitTime.TotalSeconds} seconds");
 
-            mockBuilder.Channels[1].AssertWasCalled(x => x.Dispose());
+            mockBuilder.Channels[1].Received().Dispose();
         }
 
         private AutoResetEvent WaitForConsumerModelDisposedMessage()
@@ -93,5 +95,3 @@ namespace EasyNetQ.Tests
         }
     }
 }
-
-// ReSharper restore InconsistentNaming

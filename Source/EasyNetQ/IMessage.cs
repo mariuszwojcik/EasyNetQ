@@ -27,11 +27,11 @@ namespace EasyNetQ
         Type MessageType { get; }
     }
 
-    public class Message<T> : IMessage<T> where T : class
+    public class Message<T> : IMessage<T>
     {
         public MessageProperties Properties { get; private set; }
-        public Type MessageType { get; private set; }
-        public T Body { get; private set; }
+        public Type MessageType { get; }
+        public T Body { get; }
 
         public object GetBody() { return Body; }
 

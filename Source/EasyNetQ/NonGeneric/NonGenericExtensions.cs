@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using EasyNetQ.FluentConfiguration;
+using EasyNetQ.Internals;
 using EasyNetQ.Producer;
 using EasyNetQ.Topology;
 
@@ -66,12 +67,12 @@ namespace EasyNetQ.NonGeneric
 
         public static void Publish(this IBus bus, Type messageType, object message)
         {
-            PublishAsync(bus, messageType, message).Wait();
+            PublishAsync(bus, messageType, message).GetAwaiter().GetResult();
         }
 
         public static void Publish(this IBus bus, Type messageType, object message, string topic)
         {
-            PublishAsync(bus, messageType, message, topic).Wait();
+            PublishAsync(bus, messageType, message, topic).GetAwaiter().GetResult();
         }
 
         public static Task PublishAsync(this IBus bus, Type messageType, object message)
@@ -91,11 +92,11 @@ namespace EasyNetQ.NonGeneric
             var publishExchangeDeclareStrategy = bus.Advanced.Container.Resolve<IPublishExchangeDeclareStrategy>();
             var messageDeliveryModeStrategy = bus.Advanced.Container.Resolve<IMessageDeliveryModeStrategy>();
             
-            var exchange = publishExchangeDeclareStrategy.DeclareExchange(advancedBus, messageType, ExchangeType.Topic);
+            var exchange = publishExchangeDeclareStrategy.DeclareExchange(messageType, ExchangeType.Topic);
             var easyNetQMessage = MessageFactory.CreateInstance(messageType, message);
             easyNetQMessage.Properties.DeliveryMode = messageDeliveryModeStrategy.GetDeliveryMode(messageType);
 
-            return advancedBus.PublishAsync(exchange, topic, false, false, easyNetQMessage);
+            return advancedBus.PublishAsync(exchange, topic, false, easyNetQMessage);
         }
 
         private static bool HasCorrectParameters(MethodInfo methodInfo)

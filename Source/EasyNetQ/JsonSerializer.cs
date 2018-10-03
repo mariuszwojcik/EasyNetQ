@@ -1,21 +1,24 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 using Newtonsoft.Json;
 
 namespace EasyNetQ
 {
     public class JsonSerializer : ISerializer
     {
-        private readonly ITypeNameSerializer typeNameSerializer;
+        private readonly JsonSerializerSettings serializerSettings;
 
-        private readonly JsonSerializerSettings serializerSettings = new JsonSerializerSettings
+        public JsonSerializer()
         {
-            TypeNameHandling = TypeNameHandling.Auto
-        };
+            serializerSettings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Auto
+            };
+        }
 
-        public JsonSerializer(ITypeNameSerializer typeNameSerializer)
+        public JsonSerializer(JsonSerializerSettings serializerSettings)
         {
-            Preconditions.CheckNotNull(typeNameSerializer, "typeNameSerializer");
-            this.typeNameSerializer = typeNameSerializer;
+            this.serializerSettings = serializerSettings;
         }
 
         public byte[] MessageToBytes<T>(T message) where T : class
@@ -30,11 +33,10 @@ namespace EasyNetQ
             return JsonConvert.DeserializeObject<T>(Encoding.UTF8.GetString(bytes), serializerSettings);
         }
 
-        public object BytesToMessage(string typeName, byte[] bytes)
+        public object BytesToMessage(Type type, byte[] bytes)
         {
-            Preconditions.CheckNotNull(typeName, "typeName");
+            Preconditions.CheckNotNull(type, "type");
             Preconditions.CheckNotNull(bytes, "bytes");
-            var type = typeNameSerializer.DeSerialize(typeName);
             return JsonConvert.DeserializeObject(Encoding.UTF8.GetString(bytes), type, serializerSettings);
         }
     }

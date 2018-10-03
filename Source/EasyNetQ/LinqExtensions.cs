@@ -21,12 +21,6 @@ namespace EasyNetQ
             }
         }
 
-        public static IEnumerable<KeyValuePair<string, string>> EnumerateDictionary(this IDictionary<string, object> dictionary)
-        {
-            return from KeyValuePair<string, object> entry in dictionary 
-                   select new KeyValuePair<string, string>(entry.Key, entry.Value.ToString());
-        }
-
         public static IEnumerable<T> SurroundWith<T>(this IEnumerable<T> items, T first, T last)
         {
             yield return first;
@@ -50,8 +44,13 @@ namespace EasyNetQ
             }
         }
 
+        internal static string Stringify(this IDictionary<string, object> source)
+        {
+            return string.Join(", ", source.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+        }
+
         [ThreadStatic] private static Random random;
 
-        private static Random Random { get { return random ?? (random = new Random(Environment.TickCount)); } }
+        private static Random Random => random ?? (random = new Random(Environment.TickCount));
     }
 }

@@ -1,14 +1,14 @@
 ﻿// ReSharper disable InconsistentNaming
 
-using NUnit.Framework;
+using Xunit;
 using EasyNetQ.AmqpExceptions;
+using FluentAssertions;
 
 namespace EasyNetQ.Tests
 {
-    [TestFixture]
     public class AmqpExceptionParserTests
     {
-        [Test]
+        [Fact]
         public void Should_parse_first_Amqp_exception_example()
         {
             const string originalException =
@@ -17,13 +17,13 @@ namespace EasyNetQ.Tests
 
             var amqpException = AmqpExceptionGrammar.ParseExceptionString(originalException);
 
-            amqpException.Preface.Text.ShouldEqual("The AMQP operation was interrupted");
-            amqpException.Code.ShouldEqual(320);
-            amqpException.MethodId.ShouldEqual(0);
-            amqpException.ClassId.ShouldEqual(0);
+            amqpException.Preface.Text.Should().Be("The AMQP operation was interrupted");
+            amqpException.Code.Should().Be(320);
+            amqpException.MethodId.Should().Be(0);
+            amqpException.ClassId.Should().Be(0);
         }
 
-        [Test]
+        [Fact]
         public void Should_parse_second_Amqp_exception_example()
         {
             const string originalException =
@@ -33,19 +33,20 @@ namespace EasyNetQ.Tests
 
             var amqpException = AmqpExceptionGrammar.ParseExceptionString(originalException);
 
-            amqpException.Preface.Text.ShouldEqual("The AMQP operation was interrupted");
-            amqpException.Code.ShouldEqual(406);
-            amqpException.MethodId.ShouldEqual(10);
-            amqpException.ClassId.ShouldEqual(40);
+            amqpException.Preface.Text.Should().Be("The AMQP operation was interrupted");
+            amqpException.Code.Should().Be(406);
+            amqpException.MethodId.Should().Be(10);
+            amqpException.ClassId.Should().Be(40);
         }
 
-        [Test]
-        [ExpectedException(typeof(Sprache.ParseException))]
+        [Fact]
         public void Should_fail_on_badly_formatted_exception()
         {
+            Assert.Throws<Sprache.ParseException>(() => { 
             const string originalException = "Do be do od be do do = something else, that I don't know=hello";
 
             AmqpExceptionGrammar.ParseExceptionString(originalException);
+            });
         }
     }
 }

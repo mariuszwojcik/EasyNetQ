@@ -6,75 +6,70 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using EasyNetQ.ConnectionString;
-using EasyNetQ.Loggers;
 using EasyNetQ.Producer;
-using NUnit.Framework;
+using Xunit;
 
 namespace EasyNetQ.Tests.Integration
 {
-    [TestFixture]
     [Explicit("Requires a RabbitMQ instance on localhost")]
-    public class ClientCommandDispatcherTests
+    public class ClientCommandDispatcherTests : IDisposable
     {
         private IClientCommandDispatcher dispatcher;
         private IPersistentConnection connection;
 
-        [SetUp]
-        public void SetUp()
+        public ClientCommandDispatcherTests()
         {
             var eventBus = new EventBus();
-            var logger = new ConsoleLogger();
             var parser = new ConnectionStringParser();
             var configuration = parser.Parse("host=localhost");
             var hostSelectionStrategy = new RandomClusterHostSelectionStrategy<ConnectionFactoryInfo>();
             var connectionFactory = new ConnectionFactoryWrapper(configuration, hostSelectionStrategy);
-            connection = new PersistentConnection(connectionFactory, logger, eventBus);
-            var persistentChannelFactory = new PersistentChannelFactory(logger, configuration, eventBus);
-            dispatcher = new ClientCommandDispatcher(connection, persistentChannelFactory);
+            connection = new PersistentConnection(connectionFactory, eventBus);
+            var persistentChannelFactory = new PersistentChannelFactory(configuration, eventBus);
+            dispatcher = new ClientCommandDispatcher(configuration, connection, persistentChannelFactory);
             connection.Initialize();
         }
 
-        [TearDown]
-        public void TearDown()
+        public void Dispose()
         {
             dispatcher.Dispose();
             connection.Dispose();
         }
 
-        [Test]
+        [Fact]
         public void Should_dispatch_simple_channel_action()
         {
-            var task = dispatcher.Invoke(x =>
+            var task = dispatcher.InvokeAsync(x =>
                 {
-                    x.ExchangeDeclare("MyExchange", "direct");
+                    x.ExchangeDeclare("MyExchange", "direct", true, false, new Dictionary<string, object>());
                     Console.Out.WriteLine("declare executed");
                 });
             task.Wait();
             Console.Out.WriteLine("Task complete");
         }
 
-        [Test]
+        [Fact]
         public void Should_bubble_exception()
         {
-            var task = dispatcher.Invoke(x =>
+            var task = dispatcher.InvokeAsync(x =>
             {
-                x.ExchangeDeclare("MyExchange", "topic");
+                x.ExchangeDeclare("MyExchange", "topic", true, false, new Dictionary<string, object>());
                 Console.Out.WriteLine("declare executed");
             });
             task.Wait();
             Console.Out.WriteLine("Task complete");
         }
 
-        [Test]
+        [Fact]
         public void Should_be_able_to_get_result_back()
         {
-            var task = dispatcher.Invoke(x => x.QueueDeclare("MyQueue", true, false, false, null));
+            var task = dispatcher.InvokeAsync(x => x.QueueDeclare("MyQueue", true, false, false, null));
             task.Wait();
             var queueDeclareOk = task.Result;
             Console.Out.WriteLine(queueDeclareOk.QueueName);
         }
 
-        [Test]
+        [Fact]
         public void Should_be_able_to_do_lots_of_operations_from_different_threads()
         {
             Helpers.ClearAllQueues();
@@ -87,9 +82,9 @@ namespace EasyNetQ.Tests.Integration
                     {
                         for (var j = 0; j < 100000; j++)
                         {
-                            dispatcher.Invoke(
+                            dispatcher.InvokeAsync(
                                 x =>
-                                x.BasicPublish("", "MyQueue", false, false, x.CreateBasicProperties(), body)
+                                x.BasicPublish("", "MyQueue", false, x.CreateBasicProperties(), body)
                                 ).Wait();
                         }
                     }, TaskCreationOptions.LongRunning));

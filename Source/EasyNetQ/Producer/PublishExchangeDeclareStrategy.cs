@@ -1,37 +1,61 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using EasyNetQ.Internals;
 using EasyNetQ.Topology;
 
 namespace EasyNetQ.Producer
 {
     public class PublishExchangeDeclareStrategy : IPublishExchangeDeclareStrategy
     {
-        private readonly ConcurrentDictionary<string, Task<IExchange>> exchangeNames =new ConcurrentDictionary<string, Task<IExchange>>();
-     
-        public IExchange DeclareExchange(IAdvancedBus advancedBus, string exchangeName, string exchangeType)
+        private readonly IAdvancedBus advancedBus;
+        private readonly AsyncLock asyncLock = new AsyncLock();
+        private readonly IConventions conventions;
+        private readonly ConcurrentDictionary<string, IExchange> exchanges = new ConcurrentDictionary<string, IExchange>();
+
+        public PublishExchangeDeclareStrategy(IConventions conventions, IAdvancedBus advancedBus)
         {
-            return DeclareExchangeAsync(advancedBus, exchangeName, exchangeType).Result;
-        }
-        
-        public IExchange DeclareExchange(IAdvancedBus advancedBus, Type messageType, string exchangeType)
-        {
-            return DeclareExchangeAsync(advancedBus, messageType, exchangeType).Result;
+            Preconditions.CheckNotNull(conventions, "conventions");
+            Preconditions.CheckNotNull(advancedBus, "advancedBus");
+
+            this.conventions = conventions;
+            this.advancedBus = advancedBus;
         }
 
-        public Task<IExchange> DeclareExchangeAsync(IAdvancedBus advancedBus, string exchangeName, string exchangeType)
+        public IExchange DeclareExchange(string exchangeName, string exchangeType)
         {
-            return exchangeNames.AddOrUpdate(
-                exchangeName,
-                name => advancedBus.ExchangeDeclareAsync(name, exchangeType),
-                (name, exchangeTask) => exchangeTask.IsFaulted ? advancedBus.ExchangeDeclareAsync(name, exchangeType) : exchangeTask);
+            if (exchanges.TryGetValue(exchangeName, out var exchange)) return exchange;
+            using (asyncLock.Acquire())
+            {
+                if (exchanges.TryGetValue(exchangeName, out exchange)) return exchange;
+                exchange = advancedBus.ExchangeDeclare(exchangeName, exchangeType);
+                exchanges[exchangeName] = exchange;
+                return exchange;
+            }
         }
 
-        public Task<IExchange> DeclareExchangeAsync(IAdvancedBus advancedBus, Type messageType, string exchangeType)
+        public IExchange DeclareExchange(Type messageType, string exchangeType)
         {
-            var conventions = advancedBus.Container.Resolve<IConventions>();
             var exchangeName = conventions.ExchangeNamingConvention(messageType);
-            return DeclareExchangeAsync(advancedBus, exchangeName, exchangeType);
+            return DeclareExchange(exchangeName, exchangeType);
+        }
+
+        public async Task<IExchange> DeclareExchangeAsync(string exchangeName, string exchangeType)
+        {
+            if (exchanges.TryGetValue(exchangeName, out var exchange)) return exchange;
+            using (await asyncLock.AcquireAsync().ConfigureAwait(false))
+            {
+                if (exchanges.TryGetValue(exchangeName, out exchange)) return exchange;
+                exchange = await advancedBus.ExchangeDeclareAsync(exchangeName, exchangeType).ConfigureAwait(false);
+                exchanges[exchangeName] = exchange;
+                return exchange;
+            }
+        }
+
+        public Task<IExchange> DeclareExchangeAsync(Type messageType, string exchangeType)
+        {
+            var exchangeName = conventions.ExchangeNamingConvention(messageType);
+            return DeclareExchangeAsync(exchangeName, exchangeType);
         }
     }
 }

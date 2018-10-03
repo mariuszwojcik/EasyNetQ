@@ -1,8 +1,7 @@
 // ReSharper disable InconsistentNaming
+
 using System;
 using System.Threading;
-using System.Threading.Tasks;
-using EasyNetQ.Loggers;
 using EasyNetQ.Management.Client;
 
 namespace EasyNetQ.Tests
@@ -76,8 +75,7 @@ namespace EasyNetQ.Tests
         /// </summary>
         public void Long_running_consumer_survives_broker_restart()
         {
-            using (var publishBus = RabbitHutch.CreateBus("host=localhost;timeout=60", register => 
-                register.Register<IEasyNetQLogger>(_ => new NullLogger())))
+            using (var publishBus = RabbitHutch.CreateBus("host=localhost;timeout=60"))
             using (var subscribeBus = RabbitHutch.CreateBus("host=localhost"))
             {
                 subscribeBus.Subscribe<MyMessage>("longRunner", message =>
@@ -141,16 +139,13 @@ namespace EasyNetQ.Tests
             }
         }
 
-        [Serializable]
         public abstract class ErrorTestBaseMessage
         {
             public string Text { get; set; }
             public int Id { get; set; }
         }
 
-        [Serializable]
         public class FromA : ErrorTestBaseMessage {}
-        [Serializable]
         public class FromB : ErrorTestBaseMessage { }
     }
 }
